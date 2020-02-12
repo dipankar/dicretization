@@ -2,7 +2,8 @@ import delegator
 import argparse
 import logging
 import glob
-import celery
+from celery import Celery
+from worker import app
 
 logging.root.setLevel(logging.NOTSET)
 
@@ -23,7 +24,11 @@ f_handler.setFormatter(f_format)
 logger.addHandler(c_handler)
 logger.addHandler(f_handler)
 
-app = Celery('tasks', broker='pyamqp://guest@localhost//')
+@app.task
+def execute_cmd(cmd):
+    c = delegator.run(cmd)
+    logger.debug(cmd)
+    return
 
 @app.task
 def split_video(file_path,output,append_name="",fps=25.0,olf=0,olb=0):
@@ -51,24 +56,9 @@ def split_video(file_path,output,append_name="",fps=25.0,olf=0,olb=0):
         # Generate the wav file
         file_name_i = file_name % i
         cmd = "ffmpeg -i %s -acodec copy -ss %0.4f -to %0.4f %s.wav" % (file_path,st,et,file_name_i,)
-        c = delegator.run(cmd)
+        execute_cmd.delay(cmd)
+        #c = delegator.run(cmd)
         logger.debug(cmd)
         logger.info("Splitting audio from %0.4f to %0.4f for frame %d of duration %0.2fms" % (st,et,i,(et-st)*1000.0))
     return
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Process a video file")
-    parser.add_argument("--file",type=str)
-    parser.add_argument("--dir",type=str)
-    parser.add_argument("--output",type=str,required=True)
-    parser.add_argument("--fps",type=float,default=25.0)
-    parser.add_argument("--olf",type=float,default=0.0)
-    parser.add_argument("--olb",type=float,default=0.0)
-    args = parser.parse_args()
-    if args.file:
-        split_video(args.file,args.output,"000000001",args.fps,args.olf,args.olb)
-    elif args.dir:
-        c = 1
-        for file_name in glob.glob("%s/*" % args.dir):
-            split_video(file_name,args.output,"0000%05d" % c,args.fps,args.olf,args.olb)
-            c = c + 1
