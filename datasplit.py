@@ -1,9 +1,11 @@
 import delegator
 import argparse
 import logging
-import glob
 from celery import Celery
 from worker import app
+import os
+import math
+
 
 logging.root.setLevel(logging.NOTSET)
 
@@ -27,16 +29,18 @@ logger.addHandler(f_handler)
 @app.task
 def execute_cmd(cmd):
     c = delegator.run(cmd)
-    logger.debug(cmd)
+    #print(c.out)
+    logger.info(cmd)
     return
 
 @app.task
 def split_video(file_path,output,append_name="",fps=25.0,olf=0,olb=0):
     # Split the video 
-    file_name = "%s/%s%%d" % (output,append_name,) # images/image-%05d.bmp
+    file_name = os.path.join(output,"%s%%d" % append_name)
     logger.info("File path : %s" % file_path)
     cmd = "ffmpeg -i %s -r %f -f image2 %s.bmp" % (file_path,fps, file_name)
-    c = delegator.run(cmd)
+    #c = delegator.run(cmd)
+    execute_cmd.delay(cmd)
     logger.info("Images have been generated")
     logger.debug(cmd)
     # Get the video length
@@ -48,7 +52,8 @@ def split_video(file_path,output,append_name="",fps=25.0,olf=0,olb=0):
     logger.info("Detected file length: %f seconds" % l)
     ts = 1.0/fps
     hts = ts/2.0
-    nf = int(l*fps)
+    nf = int(math.ceil(l*fps))
+    logger.info("Number of frames: %d" % nf)
     for i in range(0,nf):
         tts = i*ts
         et = tts + hts + (hts*olf) if tts<l else l
