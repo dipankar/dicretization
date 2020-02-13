@@ -33,23 +33,28 @@ def execute_cmd(cmd):
     logger.info(cmd)
     return
 
-@app.task
-def split_video(file_path,output,append_name="",fps=25.0,olf=0,olb=0):
-    # Split the video 
-    file_name = os.path.join(output,"%s%%d" % append_name)
-    logger.info("File path : %s" % file_path)
-    cmd = "ffmpeg -i %s -r %f -f image2 %s.bmp" % (file_path,fps, file_name)
-    #c = delegator.run(cmd)
-    #execute_cmd.delay(cmd)
-    logger.info("Images have been generated")
-    logger.debug(cmd)
-    # Get the video length
+def get_length(file_path):
     cmd = "ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 %s" % file_path
     c = delegator.run(cmd)
     logger.debug(cmd)
     # Generate the timings
     l = float(c.out)
     logger.info("Detected file length: %f seconds" % l)
+    return l
+
+def get_frame_fps(file_path,file_name,fps):
+    cmd = "ffmpeg -i %s -r %f -f image2 %s.bmp" % (file_path,fps, file_name)
+    #c = delegator.run(cmd)
+    execute_cmd.delay(cmd)
+    logger.info("Images have been generated")
+    logger.debug(cmd)
+    return
+
+
+@app.task
+def split_video_fps(file_path,output,append_name="",fps=25.0,olf=0,olb=0):
+    file_name = os.path.join(output,"%s%%d" % append_name)
+    l = get_length(file_path)
     ts = 1.0/fps
     hts = ts/2.0
     nf = int(math.ceil(l*fps))
@@ -59,7 +64,8 @@ def split_video(file_path,output,append_name="",fps=25.0,olf=0,olb=0):
         file_name_i = file_name % i
         cmd="""ffmpeg -i %s -filter:v \
         "select='lt(prev_pts*TB\,%0.4f)*gte(pts*TB\,%0.4f)'" \
-        -vsync drop %s_%%03d.bmp""" % (file_path,tts,tts,file_name_i)
+        -vsync drop %s.bmp""" % (file_path,tts,tts,file_name_i)
+        # %s_%%03d.bmp
         execute_cmd.delay(cmd)
         et = tts + hts + (hts*olf) if tts<l else l
         st = tts - hts - (hts*olb) if tts>0 else 0.0
@@ -69,5 +75,30 @@ def split_video(file_path,output,append_name="",fps=25.0,olf=0,olb=0):
         #c = delegator.run(cmd)
         logger.debug(cmd)
         logger.info("Splitting audio from %0.4f to %0.4f for frame %d of duration %0.2fms" % (st,et,i,(et-st)*1000.0))
+    return
+
+@app.task
+def split_video(file_path,output,append_name="",al=200,ol=20):
+    file_name = os.path.join(output,"%s%%d" % append_name)
+    l = get_length(file_path)
+    total = 0
+    i = 0
+    alw = al/2.0
+    while(total<l):
+        file_name_i = file_name % i
+        cmd="""ffmpeg -i %s -filter:v \
+        "select='lt(prev_pts*TB\,%0.4f)*gte(pts*TB\,%0.4f)'" \
+        -vsync drop %s.bmp""" % (file_path,tts,tts,file_name_i)
+        # %s_%%03d.bmp
+        execute_cmd.delay(cmd)
+        et = total+alw if (total_alw)>l else l
+        st = total-alw if total>alw else 0.0
+        # Generate the wav file
+        cmd = "ffmpeg -i %s -acodec copy -ss %0.4f -to %0.4f %s.wav" % (file_path,st,et,file_name_i,)
+        execute_cmd.delay(cmd)
+        logger.debug(cmd)
+        logger.info("Splitting audio from %0.4f to %0.4f for frame %d of duration %0.2fms" % (st,et,i,(et-st)*1000.0))
+        total = total+al-ol
+        i = i + 1
     return
 
