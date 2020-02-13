@@ -40,7 +40,7 @@ def split_video(file_path,output,append_name="",fps=25.0,olf=0,olb=0):
     logger.info("File path : %s" % file_path)
     cmd = "ffmpeg -i %s -r %f -f image2 %s.bmp" % (file_path,fps, file_name)
     #c = delegator.run(cmd)
-    execute_cmd.delay(cmd)
+    #execute_cmd.delay(cmd)
     logger.info("Images have been generated")
     logger.debug(cmd)
     # Get the video length
@@ -56,10 +56,14 @@ def split_video(file_path,output,append_name="",fps=25.0,olf=0,olb=0):
     logger.info("Number of frames: %d" % nf)
     for i in range(0,nf):
         tts = i*ts
+        file_name_i = file_name % i
+        cmd="""ffmpeg -i %s -filter:v \
+        "select='lt(prev_pts*TB\,%0.4f)*gte(pts*TB\,%0.4f)'" \
+        -vsync drop %s_%%03d.bmp""" % (file_path,tts,tts,file_name_i)
+        execute_cmd.delay(cmd)
         et = tts + hts + (hts*olf) if tts<l else l
         st = tts - hts - (hts*olb) if tts>0 else 0.0
         # Generate the wav file
-        file_name_i = file_name % i
         cmd = "ffmpeg -i %s -acodec copy -ss %0.4f -to %0.4f %s.wav" % (file_path,st,et,file_name_i,)
         execute_cmd.delay(cmd)
         #c = delegator.run(cmd)
